@@ -31,7 +31,7 @@ def main():
     )
 
     simulation.initialize(initial_states=[initial_state] * 5)
-    simulation.run(3)
+    simulation.run(10)
 
 
 def resampler():
