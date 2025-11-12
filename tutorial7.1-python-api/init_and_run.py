@@ -19,7 +19,7 @@ def main():
     clean_up_previous_output()
     logging.basicConfig(filename='west.log', level=logging.INFO)
 
-    initial_state = westpa.State(ref=os.path.abspath('bstate.xml'))
+    initial_state = westpa.State(file=os.path.abspath('bstate.xml'))
 
     simulation = westpa.Simulation(
         datafile='west.h5',
@@ -83,7 +83,7 @@ def propagator():
 
 
 def calculate_pcoord(segment, topology):
-    traj = mdtraj.load_xml(segment.final_state.ref, top=topology)
+    traj = mdtraj.load_xml(segment.final_state.file, top=topology)
     distances = mdtraj.compute_distances(traj, atom_pairs=[[0, 1]])
     segment.pcoord = distances * 10  # nanometer -> angstrom
     return segment
