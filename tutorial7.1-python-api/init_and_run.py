@@ -23,25 +23,23 @@ def main():
 
     simulation = westpa.Simulation(
         datafile='west.h5',
-        resampler=resampler(),
         propagator=propagator(),
         pcoord_calculator=pcoord_calculator(),
+        bin_mapper=bin_mapper(),
+        bin_target_counts=5,
         source=westpa.Source(states=[initial_state]),
-        sink=westpa.Sink(indicator=lambda segment: segment.pcoord[-1, 0] < 2.6),
+        sinks=westpa.Sink(indicator=lambda seg: seg.pcoord[-1, 0] < 2.6, label='bound'),
     )
 
     simulation.initialize(initial_states=[initial_state] * 5)
     simulation.run(10)
 
 
-def resampler():
-    return westpa.HuberKimResampler(
-        bin_mapper=westpa.RectilinearBinMapper(
-            boundaries=[
-                [0, 2.6, 2.8, 3, 3.2, 3.4, 3.6, 3.8, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, np.inf]
-            ],
-        ),
-        bin_target_counts=5,
+def bin_mapper():
+    return westpa.RectilinearBinMapper(
+        boundaries=[
+            [0, 2.6, 2.8, 3, 3.2, 3.4, 3.6, 3.8, 4, 4.5, 5, 5.5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, np.inf]
+        ],
     )
 
 
