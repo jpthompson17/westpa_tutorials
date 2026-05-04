@@ -19,20 +19,68 @@ def main():
     clean_up_previous_output()
     logging.basicConfig(filename='west.log', level=logging.INFO)
 
-    initial_state = westpa.State(file=os.path.abspath('bstate.xml'))
+    topology = openmm.app.PDBFile('topology.pdb').getTopology()
+    initial_state = westpa.State(file=os.path.abspath('initial_state.xml'))
 
     simulation = westpa.Simulation(
         datafile='west.h5',
-        propagator=propagator(),
-        pcoord_calculator=pcoord_calculator(),
+        propagator=propagator(topology),
+        pcoord_calculator=pcoord_calculator(topology),
         bin_mapper=bin_mapper(),
         bin_target_counts=5,
         source=westpa.Source(states=[initial_state]),
-        sinks=westpa.Sink(indicator=lambda seg: seg.pcoord[-1, 0] < 2.6, label='bound'),
+        sinks=westpa.Sink(indicator=is_bound, label='bound'),
     )
 
-    simulation.initialize(initial_states=[initial_state] * 5)
-    simulation.run(10)
+    simulation.initialize(states=[initial_state] * 5)
+    simulation.run(3)
+
+
+def propagator(topology):
+    forcefield = openmm.app.ForceField('amber14-all.xml', 'amber14/tip3p.xml')
+    system = forcefield.createSystem(
+        topology,
+        nonbondedMethod=openmm.app.PME,
+        nonbondedCutoff=1 * unit.nanometer,
+        constraints=openmm.app.HBonds,
+    )
+    system.addForce(openmm.MonteCarloBarostat(1 * unit.bar, 300 * unit.kelvin))
+    integrator = openmm.LangevinIntegrator(
+        300 * unit.kelvin, 1 / unit.picosecond, 2 * unit.femtosecond
+    )
+
+    propagator = westpa.OpenMMPropagator(
+        topology=topology,
+        system=system,
+        integrator=integrator,
+        steps=1000,
+    )
+    propagator.add_reporter(openmm.app.XTCReporter, 'traj.xtc', 500)
+    propagator.add_reporter(
+        openmm.app.StateDataReporter,
+        filename='log.csv',
+        report_interval=100,
+        options={
+            'step': True,
+            'potentialEnergy': True,
+            'kineticEnergy': True,
+            'temperature': True,
+        },
+    )
+
+    return propagator
+
+
+def get_pcoord(segment, top):
+    traj = mdtraj.load_xml(segment.final_state.file, top=top)
+    distances = mdtraj.compute_distances(traj, atom_pairs=[[0, 1]])
+    segment.pcoord = distances * 10  # nanometer -> angstrom
+    return segment
+
+
+def pcoord_calculator(topology):
+    top = mdtraj.Topology.from_openmm(topology)
+    return functools.partial(get_pcoord, top=top)
 
 
 def bin_mapper():
@@ -43,53 +91,8 @@ def bin_mapper():
     )
 
 
-def propagator():
-    forcefield = openmm.app.ForceField('amber14-all.xml', 'amber14/tip3p.xml')
-    topology = openmm.app.PDBFile('bstate.pdb').getTopology()
-    system = forcefield.createSystem(
-        topology,
-        nonbondedMethod=openmm.app.PME,
-        nonbondedCutoff=1 * unit.nanometer,
-        constraints=openmm.app.HBonds,
-    )
-    system.addForce(openmm.MonteCarloBarostat(1 * unit.bar, 300 * unit.kelvin))
-    integrator = openmm.LangevinMiddleIntegrator(
-        300 * unit.kelvin, 1 / unit.picosecond, 2 * unit.femtosecond
-    )
-
-    reports = [
-        westpa.OpenMMReport(
-            reporter_type=openmm.app.XTCReporter,
-            filename='traj.xtc',
-            report_interval=500,
-        ),
-        westpa.OpenMMReport(
-            reporter_type=openmm.app.StateDataReporter,
-            filename='log.csv',
-            report_interval=100,
-            options=dict(step=True, potentialEnergy=True, kineticEnergy=True, temperature=True),
-        ),
-    ]
-
-    return westpa.OpenMMPropagator(
-        topology=topology,
-        system=system,
-        integrator=integrator,
-        steps=1000,
-        reports=reports,
-    )
-
-
-def calculate_pcoord(segment, topology):
-    traj = mdtraj.load_xml(segment.final_state.file, top=topology)
-    distances = mdtraj.compute_distances(traj, atom_pairs=[[0, 1]])
-    segment.pcoord = distances * 10  # nanometer -> angstrom
-    return segment
-
-
-def pcoord_calculator():
-    topology = mdtraj.load_topology('bstate.pdb')
-    return functools.partial(calculate_pcoord, topology=topology)
+def is_bound(segment):
+    return segment.pcoord[-1, 0] < 2.6
 
 
 def clean_up_previous_output():
