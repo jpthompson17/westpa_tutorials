@@ -28,8 +28,8 @@ def main():
 
     sim = we.Simulation(
         datafile='west.h5',
-        propagator=get_propagator(topology),
-        pcoord_calculator=get_pcoord_calculator(topology),
+        propagator=propagator(topology),
+        pcoord_calculator=pcoord_calculator(topology),
         bin_mapper=bin_mapper(),
         bin_target_counts=5,
         source=we.Source(states=[initial_state]),
@@ -41,7 +41,7 @@ def main():
     sim.run(n_iters=10)
 
 
-def get_propagator(topology):
+def propagator(topology):
     forcefield = openmm.app.ForceField('amber14-all.xml', 'amber14/tip3p.xml')
     system = forcefield.createSystem(
         topology,
@@ -87,7 +87,7 @@ def get_distance(obj, top):
         return mdtraj.compute_distances(traj, atom_pairs) * 10
 
 
-def get_pcoord_calculator(topology):
+def pcoord_calculator(topology):
     top = mdtraj.Topology.from_openmm(topology)
     return functools.partial(get_distance, top=top)
 
