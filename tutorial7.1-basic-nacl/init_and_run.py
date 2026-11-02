@@ -4,9 +4,11 @@ the WESTPA Python API. Usage::
     python -m init_and_run
 
 """
+import functools
 import logging
 import os
 import shutil
+from concurrent.futures import ProcessPoolExecutor
 
 import mdtraj
 import numpy as np
@@ -22,7 +24,7 @@ def main():
     logging.basicConfig(filename='west.log', level=logging.INFO)
 
     topology = openmm.app.PDBFile('topology.pdb').getTopology()
-    initial_state = we.State(file=os.path.abspath('initial_state.xml'))
+    initial_state = we.State(file='initial_state.xml')
 
     sim = we.Simulation(
         datafile='west.h5',
@@ -32,6 +34,7 @@ def main():
         bin_target_counts=5,
         source=we.Source(states=[initial_state]),
         sink=we.Sink(indicator=is_bound, label='bound'),
+        executor=ProcessPoolExecutor(),
     )
 
     sim.initialize(states=[initial_state] * 5)
@@ -73,20 +76,20 @@ def get_propagator(topology):
     return propagator
 
 
+def get_distance(obj, top):
+    atom_pairs = [[0, 1]]
+    if isinstance(obj, we.State):
+        traj = mdtraj.load(obj.file, top=top)
+        return mdtraj.compute_distances(traj, atom_pairs)[0] * 10  # nm -> Å
+    else:
+        files = [obj.initial_state.file, obj.final_state.file]
+        traj = mdtraj.load(files, top=top)
+        return mdtraj.compute_distances(traj, atom_pairs) * 10
+
+
 def get_pcoord_calculator(topology):
     top = mdtraj.Topology.from_openmm(topology)
-    atom_pairs = [[0, 1]]
-
-    def get_distance(obj):
-        if isinstance(obj, we.State):
-            traj = mdtraj.load(obj.file, top=top)
-            return mdtraj.compute_distances(traj, atom_pairs)[0] * 10  # nm -> Å
-        else:
-            files = [obj.initial_state.file, obj.final_state.file]
-            traj = mdtraj.load(files, top=top)
-            return mdtraj.compute_distances(traj, atom_pairs) * 10
-
-    return get_distance
+    return functools.partial(get_distance, top=top)
 
 
 def bin_mapper():
